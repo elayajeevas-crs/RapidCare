@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PATIENT
+  FACILITY
+  ADMIN
+}
+
+enum FacilityType {
+  GOVERNMENT_HOSPITAL
+  PHC
+  PRIVATE_HOSPITAL
+  EMERGENCY_CARE_CENTRE
+}
+
+enum EmergencyType {
+  SNAKE_BITE
+  INSECT_STING
+  OTHER
+}
+
+enum SessionStatus {
+  ACTIVE
+  FACILITY_SELECTED
+  ROUTE_STARTED
+  FACILITY_NOTIFIED
+  RESOLVED
+  CANCELLED
+}
+
+enum NotificationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  READY
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(PATIENT)
+  facilityId   String?
+  facility     Facility? @relation(fields: [facilityId], references: [id])
+  sessions     EmergencySession[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Facility {
+  id             String       @id @default(cuid())
+  name           String
+  type           FacilityType
+  address        String
+  latitude       Float
+  longitude      Float
+  phone          String
+  open24x7       Boolean      @default(false)
+  currentStatus  String       @default("OPEN")
+  isDemo         Boolean      @default(true)
+  resource       FacilityResource?
+  users          User[]
+  sessions       EmergencySession[]
+  notifications  EmergencyNotification[]
+  lastUpdated    DateTime     @default(now()) @updatedAt
+  createdAt      DateTime     @default(now())
+  @@index([type])
+  @@index([latitude, longitude])
+}
+
+model FacilityResource {
+  id                 String    @id @default(cuid())
+  facilityId         String    @unique
+  facility           Facility  @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  emergencyAvailable Boolean   @default(false)
+  snakeBiteTreatment Boolean   @default(false)
+  insectStingTreatment Boolean @default(false)
+  // null = unknown / not confirmed. Never default to true.
+  antivenomAvailable Boolean?
+  antivenomLastUpdated DateTime?
+  emergencyEquipmentAvailable Boolean @default(false)
+  updatedAt          DateTime  @updatedAt
+  updatedBy          String?
+}
+
+model EmergencySession {
+  id                       String        @id @default(cuid())
+  userId                   String?
+  user                     User?         @relation(fields: [userId], references: [id])
+  emergencyType            EmergencyType
+  latitude                 Float
+  longitude                Float
+  status                   SessionStatus @default(ACTIVE)
+  selectedFacilityId       String?
+  selectedFacility         Facility?     @relation(fields: [selectedFacilityId], references: [id])
+  voiceInput               String?
+  classificationConfidence Float?
+  shareToken               String?       @unique
+  shareExpiresAt           DateTime?
+  notes                    String?
+  notifications            EmergencyNotification[]
+  locations                LocationHistory[]
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
+  @@index([status])
+  @@index([emergencyType])
+  @@index([latitude, longitude])
+}
+
+model EmergencyNotification {
+  id         String   @id @default(cuid())
+  sessionId  String
+  session    EmergencySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  facilityId String
+  facility   Facility @relation(fields: [facilityId], references: [id])
+  status     NotificationStatus @default(PENDING)
+  distanceKm Float?
+  etaMinutes Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@index([facilityId, status])
+}
+
+model LocationHistory {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   EmergencySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  latitude  Float
+  longitude Float
+  accuracy  Float?
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String?
+  createdAt DateTime @default(now())
+  @@index([entity, entityId])
+}
